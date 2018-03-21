@@ -1,6 +1,8 @@
 package com.jiubao.netcore.network
 
 import android.text.TextUtils
+import org.jsoup.Connection
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -107,22 +109,96 @@ abstract class BaseNetWork{
     protected fun pushContent(httpURLConnection: HttpURLConnection,param:String){
         if(httpURLConnection.requestMethod == Method.POST){
             if(!TextUtils.isEmpty(param)){
-                outputStream = ht
+                outputStream = httpURLConnection.outputStream
+                outputStream?.write(param.toByteArray())
+                outputStream?.flush()
             }
         }
     }
+
+    protected open fun getContent(httpURLConnection: HttpURLConnection):String{
+        var ret = ""
+        var os:ByteArrayOutputStream? = null
+        try {
+            os = ByteArrayOutputStream()
+            var temp = ByteArray(CACHE_SIZE,{index -> 0})
+            var `is` = httpURLConnection.inputStream
+            inputStream = `is`
+            var len:Int
+            len = `is`.read(temp)
+            while (len > 0){
+                os.write(temp,0,len)
+                len = `is`.read(temp)
+            }
+            ret = String(os.toByteArray(),charset)
+            os.close()
+        }catch (ex: Exception){
+            if(inputStream != null){
+                inputStream?.close()
+            }
+            if(os != null){
+                os.close()
+            }
+            ex.printStackTrace()
+            throw ex
+        }
+
+        return ret;
+    }
+
+    open fun setHeader(key:String,value:String):BaseNetWork{
+        header?.put(key,value)
+        return this
+    }
+
+    open fun setHeaders(values: HashMap<String,String>):BaseNetWork{
+        if(header == null){
+            header = HashMap<String,String>()
+        }
+        for(entry in values){
+            setHeader(entry.key,entry.value)
+        }
+        return this
+    }
+
+    open fun cancel(){
+        try {
+        outputStream?.close()
+        inputStream?.close()
+        }catch (e: Exception){
+            e.printStackTrace()
+        }finally {
+            httpUrlConnection?.disconnect()
+        }
+    }
+
 
     @JvmOverloads
     open fun request(urlStr:String,mutableMap: MutableMap<String,String>? = null):BaseNetWork{
         var ex: Exception? = null
         var ret = ""
-        mUrl = urlStr;
-        var url = URL(mUrl);
-        httpUrlConnection = url.openConnection() as HttpURLConnection
-        setupRequest(httpUrlConnection!!)
-        var parseStr = setParams(httpUrlConnection!!,mutableMap)
-        connect()
-        pushContent()
+        try {
+            mUrl = urlStr;
+            var url = URL(mUrl);
+            httpUrlConnection = url.openConnection() as HttpURLConnection
+            setupRequest(httpUrlConnection!!)
+            var parseStr = setParams(httpUrlConnection!!,mutableMap)
+            connect()
+            pushContent(httpUrlConnection!!,parseStr)
+            ret = getContent(httpUrlConnection!!)
+        }catch (e:Exception){
+            e.printStackTrace()
+            ex = e
+        }finally {
+            if(ex != null && callback is IRequestCallbackV2){
+                callback?.let {
+                    (callback as IRequestCallbackV2).onError(httpUrlConnection,ex!!)
+                }
+            }else{
+                callback?.onSuccess(httpUrlConnection,ret)
+            }
+        }
+        return this
     }
 
 

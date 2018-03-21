@@ -11,6 +11,11 @@ public class MenuModel {
     String title;
     String url;
 
+    public MenuModel(String title, String url) {
+        this.title = title;
+        this.url = url;
+    }
+
     public int getId() {
         return id;
     }
